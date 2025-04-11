@@ -112,6 +112,7 @@ add_library(${module_name}
     virtualconsole/vcaudiotriggersproperties.cpp virtualconsole/vcaudiotriggersproperties.h virtualconsole/vcaudiotriggersproperties.ui
     virtualconsole/vcbutton.cpp virtualconsole/vcbutton.h
     virtualconsole/vcbuttonproperties.cpp virtualconsole/vcbuttonproperties.h virtualconsole/vcbuttonproperties.ui
+    virtualconsole/vckioskpindialog.cpp virtualconsole/vckioskpindialog.h
     virtualconsole/vcclock.cpp virtualconsole/vcclock.h
     virtualconsole/vcclockproperties.cpp virtualconsole/vcclockproperties.h virtualconsole/vcclockproperties.ui
     virtualconsole/vccuelist.cpp virtualconsole/vccuelist.h

@@ -19,31 +19,33 @@
 */
 
 #include <QStyleOptionButton>
-#include <QXmlStreamReader>
-#include <QXmlStreamWriter>
-#include <QWidgetAction>
-#include <QColorDialog>
-#include <QImageReader>
-#include <QFileDialog>
+#include <QInputDialog>
+#include <QMessageBox>
 #include <QPaintEvent>
 #include <QMouseEvent>
-#include <QMessageBox>
-#include <QByteArray>
-#include <QSettings>
 #include <QPainter>
 #include <QString>
 #include <QDebug>
-#include <QEvent>
 #include <QTimer>
-#include <QBrush>
 #include <QStyle>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
+#include <QSettings>
 #include <QMenu>
-#include <QSize>
-#include <QPen>
+#include <QFileDialog>
+#include <QImageReader>
+#include <QWidgetAction>
 
-#if defined(WIN32) || defined(Q_OS_WIN)
- #include <QStyleFactory>
-#endif
+#include "qlcmacros.h"
+#include "qlcfile.h"
+#include "app.h"
+
+#include "virtualconsole.h"
+#include "vckioskpindialog.h"
+#include "vcbutton.h"
+#include "function.h"
+#include "fixture.h"
+#include "doc.h"
 
 #include "qlcinputsource.h"
 #include "qlcmacros.h"
@@ -51,15 +53,10 @@
 
 #include "vcbuttonproperties.h"
 #include "vcpropertieseditor.h"
-#include "virtualconsole.h"
-#include "chaseraction.h"
 #include "mastertimer.h"
 #include "vcsoloframe.h"
-#include "vcbutton.h"
-#include "function.h"
 #include "apputil.h"
 #include "chaser.h"
-#include "doc.h"
 
 const QSize VCButton::defaultSize(QSize(50, 50));
 
@@ -69,6 +66,7 @@ const QSize VCButton::defaultSize(QSize(50, 50));
 
 VCButton::VCButton(QWidget* parent, Doc* doc) : VCWidget(parent, doc)
     , m_iconPath()
+    , m_kioskPin()
     , m_blackoutFadeOutTime(0)
     , m_startupIntensityEnabled(false)
     , m_startupIntensity(1.0)
@@ -601,24 +599,35 @@ VCButton::Action VCButton::action() const
 
 QString VCButton::actionToString(VCButton::Action action)
 {
-    if (action == Flash)
-        return QString(KXMLQLCVCButtonActionFlash);
-    else if (action == Blackout)
-        return QString(KXMLQLCVCButtonActionBlackout);
-    else if (action == StopAll)
-        return QString(KXMLQLCVCButtonActionStopAll);
-    else
-        return QString(KXMLQLCVCButtonActionToggle);
+    switch (action)
+    {
+    case Toggle:
+        return KXMLQLCVCButtonActionToggle;
+    case Flash:
+        return KXMLQLCVCButtonActionFlash;
+    case Blackout:
+        return KXMLQLCVCButtonActionBlackout;
+    case StopAll:
+        return KXMLQLCVCButtonActionStopAll;
+    case Kiosk:
+        return KXMLQLCVCButtonActionKiosk;
+    default:
+        return QString("Unknown");
+    };
 }
 
 VCButton::Action VCButton::stringToAction(const QString& str)
 {
-    if (str == KXMLQLCVCButtonActionFlash)
+    if (str == KXMLQLCVCButtonActionToggle)
+        return Toggle;
+    else if (str == KXMLQLCVCButtonActionFlash)
         return Flash;
     else if (str == KXMLQLCVCButtonActionBlackout)
         return Blackout;
     else if (str == KXMLQLCVCButtonActionStopAll)
         return StopAll;
+    else if (str == KXMLQLCVCButtonActionKiosk)
+        return Kiosk;
     else
         return Toggle;
 }
@@ -671,8 +680,6 @@ void VCButton::slotAttributeChanged(int value)
 #endif
 }
 
-
-
 /*****************************************************************************
  * Flash Properties
  *****************************************************************************/
@@ -697,8 +704,6 @@ void VCButton::setFlashForceLTP(bool forceLTP)
     m_flashForceLTP = forceLTP;
 }
 
-
-
 /*****************************************************************************
  * Button press / release handlers
  *****************************************************************************/
@@ -709,66 +714,78 @@ void VCButton::pressFunction()
     if (mode() == Doc::Design)
         return;
 
-    Function* f = NULL;
-    if (m_action == Toggle)
+    switch (m_action)
     {
-        f = m_doc->function(m_function);
-        if (f == NULL)
-            return;
-
-        // if the button is in a SoloFrame and the function is running but was
-        // started by a different function (a chaser or collection), turn other
-        // functions off and start this one.
-        if (state() == Active && !(isChildOfSoloFrame() && f->startedAsChild()))
+    case Flash:
         {
-            f->stop(functionParent());
-            resetIntensityOverrideAttribute();
-        }
-        else
-        {
-            adjustFunctionIntensity(f, intensity());
-
-            // starting a Chaser is a special case, since it is necessary
-            // to use Chaser Actions to properly start the first
-            // Chaser step with the right intensity
-            if (f->type() == Function::ChaserType || f->type() == Function::SequenceType)
+            Function* f = m_doc->function(m_function);
+            if (f != NULL)
             {
-                ChaserAction action;
-                action.m_action = ChaserSetStepIndex;
-                action.m_stepIndex = 0;
-                action.m_masterIntensity = intensity();
-                action.m_stepIntensity = 1.0;
-                action.m_fadeMode = Chaser::FromFunction;
-
-                Chaser *chaser = qobject_cast<Chaser*>(f);
-                chaser->setAction(action);
+                adjustFunctionIntensity(f, intensity());
+                f->flash(m_doc->masterTimer(), flashOverrides(), flashForceLTP());
+                blink(250);
             }
+        }
+        break;
 
-            f->start(m_doc->masterTimer(), functionParent());
-            setState(Active);
-            emit functionStarting(m_function);
-        }
-    }
-    else if (m_action == Flash && state() == Inactive)
-    {
-        f = m_doc->function(m_function);
-        if (f != NULL)
+    case Toggle:
         {
-            adjustFunctionIntensity(f, intensity());
-            f->flash(m_doc->masterTimer(), flashOverrides(), flashForceLTP());
-            setState(Active);
+            Function* f = m_doc->function(m_function);
+            if (f != NULL)
+            {
+                if (f->isRunning())
+                {
+                    f->stop(functionParent());
+                }
+                else
+                {
+                    adjustFunctionIntensity(f, intensity());
+                    f->start(m_doc->masterTimer(), functionParent());
+                }
+            }
         }
-    }
-    else if (m_action == Blackout)
-    {
+        break;
+
+    case Blackout:
         m_doc->inputOutputMap()->toggleBlackout();
-    }
-    else if (m_action == StopAll)
-    {
-        if (stopAllFadeTime() == 0)
+        break;
+
+    case StopAll:
+        if (m_blackoutFadeOutTime == 0)
             m_doc->masterTimer()->stopAllFunctions();
         else
-            m_doc->masterTimer()->fadeAndStopAll(stopAllFadeTime());
+            m_doc->masterTimer()->fadeAndStopAll(m_blackoutFadeOutTime);
+        break;
+
+    case Kiosk:
+        if (m_doc->isKiosk())
+        {
+            // Verify PIN before disabling kiosk mode
+            VCKioskPinDialog dlg(this, true);
+            if (dlg.exec() == QDialog::Accepted)
+            {
+                if (dlg.verifyPin(m_kioskPin))
+                {
+                    qobject_cast<App*>(m_doc->parent())->disableKioskMode();
+                }
+            }
+        }
+        else
+        {
+            // Don't allow enabling kiosk mode without a PIN
+            if (m_kioskPin.isEmpty())
+            {
+                QMessageBox::warning(this, tr("Missing PIN"),
+                                   tr("Cannot enable kiosk mode: no PIN has been set in the button properties."));
+                return;
+            }
+            // Enable kiosk mode with the PIN set in properties
+            qobject_cast<App*>(m_doc->parent())->enableKioskMode();
+        }
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -869,67 +886,29 @@ bool VCButton::isChildOfSoloFrame() const
 }
 
 /*****************************************************************************
- * Custom menu
- *****************************************************************************/
-
-QMenu* VCButton::customMenu(QMenu* parentMenu)
-{
-    QMenu* menu = new QMenu(parentMenu);
-    menu->setTitle(tr("Icon"));
-    menu->addAction(m_chooseIconAction);
-    menu->addAction(m_resetIconAction);
-
-    return menu;
-}
-
-void VCButton::adjustIntensity(qreal val)
-{
-    if (state() == Active)
-    {
-        Function* func = m_doc->function(m_function);
-        if (func != NULL)
-            adjustFunctionIntensity(func, val);
-    }
-
-    VCWidget::adjustIntensity(val);
-}
-
-/*****************************************************************************
  * Load & Save
  *****************************************************************************/
 
 bool VCButton::loadXML(QXmlStreamReader &root)
 {
-    bool visible = false;
-    int x = 0;
-    int y = 0;
-    int w = 0;
-    int h = 0;
-
     if (root.name() != KXMLQLCVCButton)
     {
-        qWarning() << Q_FUNC_INFO << "Button node not found";
+        qWarning() << Q_FUNC_INFO << "VCButton node not found";
         return false;
     }
 
     /* Widget commons */
     loadXMLCommon(root);
 
-    /* Icon */
-    setIconPath(m_doc->denormalizeComponentPath(root.attributes().value(KXMLQLCVCButtonIcon).toString()));
-
     /* Children */
     while (root.readNextStartElement())
     {
-        //qDebug() << "VC Button tag:" << root.name();
         if (root.name() == KXMLQLCWindowState)
         {
+            bool visible = false;
+            int x = 0, y = 0, w = 0, h = 0;
             loadXMLWindowState(root, &x, &y, &w, &h, &visible);
             setGeometry(x, y, w, h);
-        }
-        else if (root.name() == KXMLQLCVCWidgetAppearance)
-        {
-            loadXMLAppearance(root);
         }
         else if (root.name() == KXMLQLCVCButtonFunction)
         {
@@ -937,46 +916,41 @@ bool VCButton::loadXML(QXmlStreamReader &root)
             setFunction(str.toUInt());
             root.skipCurrentElement();
         }
-        else if (root.name() == KXMLQLCVCWidgetInput)
-        {
-            loadXMLInput(root);
-        }
         else if (root.name() == KXMLQLCVCButtonAction)
         {
-            QXmlStreamAttributes attrs = root.attributes();
             setAction(stringToAction(root.readElementText()));
-            if (attrs.hasAttribute(KXMLQLCVCButtonStopAllFadeTime))
-                setStopAllFadeOutTime(attrs.value(KXMLQLCVCButtonStopAllFadeTime).toString().toInt());
-
-            if (attrs.hasAttribute(KXMLQLCVCButtonFlashOverride))
-                setFlashOverride(attrs.value(KXMLQLCVCButtonFlashOverride).toInt());
-
-            if (attrs.hasAttribute(KXMLQLCVCButtonFlashForceLTP))
-                setFlashForceLTP(attrs.value(KXMLQLCVCButtonFlashForceLTP).toInt());
         }
         else if (root.name() == KXMLQLCVCButtonKey)
         {
-            setKeySequence(stripKeySequence(QKeySequence(root.readElementText())));
+            setKeySequence(QKeySequence(root.readElementText()));
+        }
+        else if (root.name() == KXMLQLCVCButtonIcon)
+        {
+            setIconPath(m_doc->denormalizeComponentPath(root.readElementText()));
         }
         else if (root.name() == KXMLQLCVCButtonIntensity)
         {
-            bool adjust;
+            bool adjust = false;
             if (root.attributes().value(KXMLQLCVCButtonIntensityAdjust).toString() == KXMLQLCTrue)
                 adjust = true;
-            else
-                adjust = false;
-            setStartupIntensity(qreal(root.readElementText().toInt()) / qreal(100));
+
             enableStartupIntensity(adjust);
+            setStartupIntensity(qreal(root.readElementText().toInt()) / qreal(100));
+        }
+        else if (root.name() == KXMLQLCVCButtonStopAllFadeTime)
+        {
+            setStopAllFadeOutTime(root.readElementText().toInt());
+        }
+        else if (root.name() == KXMLQLCVCButtonKioskPin)
+        {
+            setKioskPin(root.readElementText());
         }
         else
         {
-            qWarning() << Q_FUNC_INFO << "Unknown button tag:" << root.name().toString();
+            qWarning() << Q_FUNC_INFO << "Unknown VCButton tag:" << root.name().toString();
             root.skipCurrentElement();
         }
     }
-
-    /* All buttons start raised... */
-    setState(Inactive);
 
     return true;
 }
@@ -990,9 +964,6 @@ bool VCButton::saveXML(QXmlStreamWriter *doc)
 
     saveXMLCommon(doc);
 
-    /* Icon */
-    doc->writeAttribute(KXMLQLCVCButtonIcon, m_doc->normalizeComponentPath(iconPath()));
-
     /* Window state */
     saveXMLWindowState(doc);
 
@@ -1005,33 +976,36 @@ bool VCButton::saveXML(QXmlStreamWriter *doc)
     doc->writeEndElement();
 
     /* Action */
-    doc->writeStartElement(KXMLQLCVCButtonAction);
-
-    if (action() == StopAll && stopAllFadeTime() != 0)
-    {
-        doc->writeAttribute(KXMLQLCVCButtonStopAllFadeTime, QString::number(stopAllFadeTime()));
-    }
-    else if (action() == Flash)
-    {
-        doc->writeAttribute(KXMLQLCVCButtonFlashOverride, QString::number(flashOverrides()));
-        doc->writeAttribute(KXMLQLCVCButtonFlashForceLTP, QString::number(flashForceLTP()));
-    }
-    doc->writeCharacters(actionToString(action()));
-    doc->writeEndElement();
+    doc->writeTextElement(KXMLQLCVCButtonAction, actionToString(action()));
 
     /* Key sequence */
     if (m_keySequence.isEmpty() == false)
         doc->writeTextElement(KXMLQLCVCButtonKey, m_keySequence.toString());
 
-    /* Intensity adjustment */
-    doc->writeStartElement(KXMLQLCVCButtonIntensity);
-    doc->writeAttribute(KXMLQLCVCButtonIntensityAdjust,
-                     isStartupIntensityEnabled() ? KXMLQLCTrue : KXMLQLCFalse);
-    doc->writeCharacters(QString::number(int(startupIntensity() * 100)));
-    doc->writeEndElement();
-
     /* External input */
     saveXMLInput(doc);
+
+    /* Icon */
+    if (m_iconPath.isEmpty() == false)
+        doc->writeTextElement(KXMLQLCVCButtonIcon, m_doc->normalizeComponentPath(m_iconPath));
+
+    /* Intensity adjustment */
+    if (m_startupIntensityEnabled == true)
+    {
+        doc->writeStartElement(KXMLQLCVCButtonIntensity);
+        doc->writeAttribute(KXMLQLCVCButtonIntensityAdjust,
+                          QString::number(m_startupIntensityEnabled));
+        doc->writeCharacters(QString::number(int(m_startupIntensity * 100)));
+        doc->writeEndElement();
+    }
+
+    /* Stop All Fade Time */
+    if (m_blackoutFadeOutTime != 0)
+        doc->writeTextElement(KXMLQLCVCButtonStopAllFadeTime, QString::number(m_blackoutFadeOutTime));
+
+    /* Kiosk PIN */
+    if (action() == Kiosk && !m_kioskPin.isEmpty())
+        doc->writeTextElement(KXMLQLCVCButtonKioskPin, m_kioskPin);
 
     /* End the <Button> tag */
     doc->writeEndElement();
@@ -1165,9 +1139,6 @@ void VCButton::paintEvent(QPaintEvent* e)
         }
     }
 
-    /* Stop painting here */
-    painter.end();
-
     /* Draw a selection frame if appropriate */
     VCWidget::paintEvent(e);
 }
@@ -1235,4 +1206,40 @@ void VCButton::mouseReleaseEvent(QMouseEvent* e)
         VCWidget::mouseReleaseEvent(e);
     else
         releaseFunction();
+}
+
+void VCButton::adjustIntensity(qreal val)
+{
+    if (state() == Active)
+    {
+        Function* func = m_doc->function(m_function);
+        if (func != NULL)
+            adjustFunctionIntensity(func, val);
+    }
+
+    VCWidget::adjustIntensity(val);
+}
+
+QMenu* VCButton::customMenu(QMenu* parentMenu)
+{
+    QMenu* menu = new QMenu(parentMenu);
+    menu->setTitle(tr("Button"));
+
+    if (m_chooseIconAction == NULL)
+    {
+        m_chooseIconAction = new QAction(tr("Choose Icon..."), menu);
+        connect(m_chooseIconAction, SIGNAL(triggered(bool)),
+                this, SLOT(slotChooseIcon()));
+    }
+    menu->addAction(m_chooseIconAction);
+
+    if (m_resetIconAction == NULL)
+    {
+        m_resetIconAction = new QAction(tr("Reset Icon"), menu);
+        connect(m_resetIconAction, SIGNAL(triggered(bool)),
+                this, SLOT(slotResetIcon()));
+    }
+    menu->addAction(m_resetIconAction);
+
+    return menu;
 }

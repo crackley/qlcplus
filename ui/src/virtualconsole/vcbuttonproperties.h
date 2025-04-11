@@ -44,18 +44,34 @@ public:
     VCButtonProperties(VCButton* button, Doc* doc);
     ~VCButtonProperties();
 
-protected slots:
-    void slotAttachFunction();
-    void slotSetFunction(quint32 fid = Function::invalidId());
+    /** Set the button's action */
+    void setAction(VCButton::Action action);
 
+    /** Get the button's action */
+    VCButton::Action action() const;
+
+    /** Set the button's kiosk PIN */
+    void setKioskPin(const QString& pin);
+
+    /** Get the button's kiosk PIN */
+    QString kioskPin() const;
+
+private slots:
+    void accept();
+
+    void slotAttachFunction();
+    void slotDetachFunction();
+    void slotSetFunction(quint32 fid = Function::invalidId());
     void slotActionToggled();
+    void slotActionKioskClicked();
+    void slotSpeedDialToggle(bool state);
+    void slotFadeOutDialChanged(int ms);
+    void slotDialDestroyed(QObject* dial);
 
     void slotIntensitySliderMoved(int value);
     void slotIntensityEdited(const QString& text);
 
     void slotFadeOutTextEdited();
-
-    void accept();
 
 protected:
     VCButton* m_button;
@@ -63,17 +79,13 @@ protected:
     InputSelectionWidget *m_inputSelWidget;
     quint32 m_function;
 
-    /************************************************************************
-     * Speed dial
-     ************************************************************************/
+    /** The kiosk mode PIN */
+    QString m_kioskPin;
 
-private slots:
-    void slotSpeedDialToggle(bool state);
-    void slotFadeOutDialChanged(int ms);
-    void slotDialDestroyed(QObject* dial);
-
-private:
+    /** Speed dial widgets */
     SpeedDialWidget *m_speedDials;
+
+    /** The fade out time in milliseconds */
     int m_fadeOutTime;
 
 };

@@ -533,6 +533,48 @@ void App::enableKioskMode()
     // No need for the toolbar
     delete m_toolbar;
     m_toolbar = NULL;
+
+    // Force fullscreen mode regardless of current state
+    if (!(windowState() & Qt::WindowFullScreen))
+    {
+        showFullScreen();
+        if (m_controlFullScreenAction->isChecked() == false)
+            m_controlFullScreenAction->setChecked(true);
+    }
+}
+
+void App::disableKioskMode()
+{
+    // Turn off kiosk mode
+    m_doc->setKiosk(false);
+
+    // Exit fullscreen mode if active
+    if (windowState() & Qt::WindowFullScreen)
+    {
+        if (m_controlFullScreenAction->isChecked())
+            m_controlFullScreenAction->setChecked(false);
+        showNormal();
+    }
+
+    // Re-create toolbar
+    initToolBar();
+
+    // Re-add tabs
+    m_tab->insertTab(0, FixtureManager::instance(), QIcon(":/fixture.png"), tr("Fixtures"));
+    m_tab->insertTab(1, FunctionManager::instance(), QIcon(":/function.png"), tr("Functions"));
+    m_tab->insertTab(2, ShowManager::instance(), QIcon(":/show.png"), tr("Shows"));
+    m_tab->insertTab(3, VirtualConsole::instance(), QIcon(":/virtualconsole.png"), tr("Virtual Console"));
+    m_tab->insertTab(4, SimpleDesk::instance(), QIcon(":/slidermatrix.png"), tr("Simple Desk"));
+    m_tab->insertTab(5, InputOutputManager::instance(), QIcon(":/input_output.png"), tr("Inputs/Outputs"));
+
+    // Show the tab bar again
+    m_tab->tabBar()->show();
+
+    // Switch to Virtual Console tab
+    m_tab->setCurrentWidget(VirtualConsole::instance());
+
+    // Switch to design mode
+    m_doc->setMode(Doc::Design);
 }
 
 void App::createKioskCloseButton(const QRect& rect)
@@ -1302,7 +1344,7 @@ QFile::FileError App::loadXML(const QString& fileName)
     }
 
     /* Set the workspace path before loading the new XML. In this way local files
-       can be loaded even if the workspace file has been moved */
+       can be loaded even if the workspace file will be moved */
     m_doc->setWorkspacePath(QFileInfo(fileName).absolutePath());
 
     if (doc->dtdName() == KXMLQLCWorkspace)

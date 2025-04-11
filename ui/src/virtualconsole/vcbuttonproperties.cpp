@@ -65,15 +65,39 @@ VCButtonProperties::VCButtonProperties(VCButton* button, Doc* doc)
     m_nameEdit->setText(m_button->caption());
     slotSetFunction(button->function());
 
-    /* Press action */
-    if (button->action() == VCButton::Flash)
+    /* Action */
+    switch (m_button->action())
+    {
+    case VCButton::Flash:
         m_flash->setChecked(true);
-    else if (button->action() == VCButton::Blackout)
+        break;
+    case VCButton::Blackout:
         m_blackout->setChecked(true);
-    else if (button->action() == VCButton::StopAll)
+        break;
+    case VCButton::StopAll:
         m_stopAll->setChecked(true);
-    else
+        break;
+    case VCButton::Kiosk:
+        m_kiosk->setChecked(true);
+        break;
+    default:
+    case VCButton::Toggle:
         m_toggle->setChecked(true);
+        break;
+    }
+
+    /* Press action */
+    if (m_button->action() == VCButton::Flash)
+        slotActionToggled();
+    else if (m_button->action() == VCButton::Blackout)
+        slotActionToggled();
+    else if (m_button->action() == VCButton::StopAll)
+        slotActionToggled();
+    else if (m_button->action() == VCButton::Kiosk)
+        slotActionKioskClicked();
+    else
+        slotActionToggled();
+
     m_fadeOutTime = m_button->stopAllFadeTime();
     m_fadeOutEdit->setText(Function::speedToString(m_fadeOutTime));
     slotActionToggled();
@@ -90,12 +114,13 @@ VCButtonProperties::VCButtonProperties(VCButton* button, Doc* doc)
 
     /* Button connections */
     connect(m_attachFunction, SIGNAL(clicked()), this, SLOT(slotAttachFunction()));
-    connect(m_detachFunction, SIGNAL(clicked()), this, SLOT(slotSetFunction()));
+    connect(m_detachFunction, SIGNAL(clicked()), this, SLOT(slotDetachFunction()));
 
     connect(m_toggle, SIGNAL(toggled(bool)), this, SLOT(slotActionToggled()));
     connect(m_blackout, SIGNAL(toggled(bool)), this, SLOT(slotActionToggled()));
     connect(m_stopAll, SIGNAL(toggled(bool)), this, SLOT(slotActionToggled()));
     connect(m_flash, SIGNAL(toggled(bool)), this, SLOT(slotActionToggled()));
+    connect(m_kiosk, SIGNAL(toggled(bool)), this, SLOT(slotActionKioskClicked()));
 
     connect(m_speedDialButton, SIGNAL(toggled(bool)),
             this, SLOT(slotSpeedDialToggle(bool)));
@@ -107,6 +132,9 @@ VCButtonProperties::VCButtonProperties(VCButton* button, Doc* doc)
 
     connect(m_fadeOutEdit, SIGNAL(editingFinished()),
             this, SLOT(slotFadeOutTextEdited()));
+
+    m_kioskPin = m_button->kioskPin();
+    m_kioskPinEdit->setText(m_kioskPin);
 }
 
 VCButtonProperties::~VCButtonProperties()
@@ -138,6 +166,11 @@ void VCButtonProperties::slotSetFunction(quint32 fid)
     }
 }
 
+void VCButtonProperties::slotDetachFunction()
+{
+    slotSetFunction(Function::invalidId());
+}
+
 void VCButtonProperties::slotActionToggled()
 {
     if (m_blackout->isChecked() == true || m_stopAll->isChecked() == true)
@@ -157,6 +190,26 @@ void VCButtonProperties::slotActionToggled()
 
     m_forceLTP->setEnabled(m_flash->isChecked());
     m_overridePriority->setEnabled(m_flash->isChecked());
+}
+
+void VCButtonProperties::slotActionKioskClicked()
+{
+    if (m_kiosk->isChecked() == true)
+    {
+        m_functionEdit->setEnabled(false);
+        m_attachFunction->setEnabled(false);
+        m_detachFunction->setEnabled(false);
+        m_kioskPinEdit->setEnabled(true);
+        m_intensityGroup->setEnabled(false);
+    }
+    else
+    {
+        m_functionEdit->setEnabled(true);
+        m_attachFunction->setEnabled(true);
+        m_detachFunction->setEnabled(true);
+        m_kioskPinEdit->setEnabled(false);
+        m_intensityGroup->setEnabled(true);
+    }
 }
 
 void VCButtonProperties::slotSpeedDialToggle(bool state)
@@ -213,12 +266,18 @@ void VCButtonProperties::slotFadeOutTextEdited()
 
 void VCButtonProperties::accept()
 {
+    if (m_kiosk->isChecked() && m_kioskPinEdit->text().isEmpty())
+    {
+        QMessageBox::warning(this, tr("Missing PIN"),
+                           tr("Please enter a PIN to enable kiosk mode."));
+        m_kioskPinEdit->setFocus();
+        return;
+    }
+
     m_button->setCaption(m_nameEdit->text());
     m_button->setFunction(m_function);
     m_button->setKeySequence(m_inputSelWidget->keySequence());
     m_button->setInputSource(m_inputSelWidget->inputSource());
-    m_button->enableStartupIntensity(m_intensityGroup->isChecked());
-    m_button->setStartupIntensity(qreal(m_intensitySlider->value()) / qreal(100));
 
     if (m_toggle->isChecked() == true)
         m_button->setAction(VCButton::Toggle);
@@ -229,6 +288,11 @@ void VCButtonProperties::accept()
         m_button->setAction(VCButton::StopAll);
         m_button->setStopAllFadeOutTime(m_fadeOutTime);
     }
+    else if (m_kiosk->isChecked() == true)
+    {
+        m_button->setAction(VCButton::Kiosk);
+        m_button->setKioskPin(m_kioskPinEdit->text());
+    }
     else
     {
         m_button->setAction(VCButton::Flash);
@@ -236,9 +300,20 @@ void VCButtonProperties::accept()
         m_button->setFlashForceLTP(m_forceLTP->isChecked());
     }
 
-
+    m_button->enableStartupIntensity(m_intensityGroup->isChecked());
+    m_button->setStartupIntensity(qreal(m_intensitySlider->value()) / qreal(100));
     m_button->updateState();
 
     QDialog::accept();
 }
 
+void VCButtonProperties::setKioskPin(const QString& pin)
+{
+    m_kioskPin = pin;
+    m_kioskPinEdit->setText(pin);
+}
+
+QString VCButtonProperties::kioskPin() const
+{
+    return m_kioskPinEdit->text();
+}

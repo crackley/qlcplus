@@ -52,11 +52,13 @@ class QEvent;
 #define KXMLQLCVCButtonActionToggle     QString("Toggle")
 #define KXMLQLCVCButtonActionBlackout   QString("Blackout")
 #define KXMLQLCVCButtonActionStopAll    QString("StopAll")
+#define KXMLQLCVCButtonActionKiosk      QString("Kiosk")
 
 #define KXMLQLCVCButtonFlashOverride    QString("Override")
 #define KXMLQLCVCButtonFlashForceLTP    QString("ForceLTP")
 
 #define KXMLQLCVCButtonStopAllFadeTime  QString("FadeOut")
+#define KXMLQLCVCButtonKioskPin         QString("KioskPin")
 
 #define KXMLQLCVCButtonKey QString("Key")
 
@@ -189,10 +191,10 @@ public:
      */
     quint32 function() const;
 
-    /** @reimp */
+    /** @reimpl */
     void adjustFunctionIntensity(Function *f, qreal value);
 
-    /** @reimp */
+    /** @reimpl */
     virtual void notifyFunctionStarting(quint32 fid, qreal intensity);
 
 protected slots:
@@ -258,8 +260,9 @@ public:
      * Flash: Keep the function running as long as the button is kept down.
      * Blackout: Toggle blackout on/off.
      * StopAll: Stop all functions (panic button).
+     * Kiosk: Toggle kiosk mode
      */
-    enum Action { Toggle, Flash, Blackout, StopAll };
+    enum Action { Toggle, Flash, Blackout, StopAll, Kiosk };
 
     /** Set this button's action */
     void setAction(Action action);
@@ -273,8 +276,12 @@ public:
     void setStopAllFadeOutTime(int ms);
     int stopAllFadeTime() const;
 
+    void setKioskPin(const QString& pin) { m_kioskPin = pin; }
+    QString kioskPin() const { return m_kioskPin; }
+
 protected:
     Action m_action;
+    QString m_kioskPin;
     int m_blackoutFadeOutTime;
 
     /*********************************************************************
@@ -375,7 +382,7 @@ public:
      * Intensity
      *********************************************************************/
 public:
-    /** @reimp */
+    /** @reimpl */
     void adjustIntensity(qreal val);
 
     /*********************************************************************
